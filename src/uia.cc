@@ -3,6 +3,10 @@
 #include <uiautomation.h>
 #include <wrl/client.h>
 
+#if defined(_DEBUG)
+#include <array>
+#include <format>
+#endif
 #include <algorithm>
 #include <initializer_list>
 #include <optional>
@@ -245,6 +249,54 @@ std::optional<std::wstring> GetStringProperty(
   return std::wstring(property.Ref().bstrVal);
 }
 
+#if defined(_DEBUG)
+std::wstring FormatRect(const RECT& rect) {
+  return std::format(L"({}, {})-({}, {})", rect.left, rect.top, rect.right,
+                     rect.bottom);
+}
+
+std::wstring GetWindowClassNameForLog(HWND hwnd) {
+  if (!hwnd) {
+    return L"<null>";
+  }
+
+  std::array<wchar_t, 256> class_name{};
+  const int length = ::GetClassNameW(hwnd, class_name.data(),
+                                     static_cast<int>(class_name.size()));
+  if (length == 0) {
+    return L"<unavailable>";
+  }
+  return std::wstring(class_name.data(), static_cast<std::size_t>(length));
+}
+
+std::wstring ElementDebugSummary(
+    const ComPtr<IUIAutomationElement>& element) {
+  if (!element) {
+    return L"<null>";
+  }
+
+  std::wstring class_name = L"<class unavailable>";
+  ScopedBstr class_bstr;
+  if (SUCCEEDED(element->get_CurrentClassName(class_bstr.Receive())) &&
+      class_bstr) {
+    class_name.assign(class_bstr.Get(), class_bstr.Length());
+  }
+
+  std::wstring name = L"<name unavailable>";
+  if (const auto property = GetStringProperty(element, UIA_NamePropertyId)) {
+    name = *property;
+  }
+
+  RECT rect;
+  if (FAILED(element->get_CurrentBoundingRectangle(&rect))) {
+    return std::format(L"class='{}' name='{}' rect=<unavailable>", class_name,
+                       name);
+  }
+  return std::format(L"class='{}' name='{}' rect={}", class_name, name,
+                     FormatRect(rect));
+}
+#endif
+
 bool HasClassName(const ComPtr<IUIAutomationElement>& element,
                   std::wstring_view expected_class_name) {
   if (!element) {
@@ -472,6 +524,10 @@ std::wstring_view GetTabElementClassName(TabContainerKind kind) {
   return kind == TabContainerKind::kHorizontal ? L"Tab" : L"VerticalTabView";
 }
 
+std::wstring_view TabContainerKindName(TabContainerKind kind) {
+  return kind == TabContainerKind::kHorizontal ? L"horizontal" : L"vertical";
+}
+
 const ComPtr<IUIAutomationCondition>& GetTabElementCondition(
     const UiaSession& session,
     TabContainerKind kind) {
@@ -516,6 +572,10 @@ std::optional<TabContainer> FindHorizontalTabContainerForWindow(
           window_element, session.class_conditions.tab_strip_drag_context)) {
     if (const auto container =
             FindSiblingByClass(session, tab_strip, L"TabContainerImpl")) {
+#if defined(_DEBUG)
+      DebugLog(L"UIA: horizontal tab container via tab strip drag context: {}",
+               ElementDebugSummary(container));
+#endif
       return TabContainer{container, TabContainerKind::kHorizontal};
     }
   }
@@ -525,6 +585,10 @@ std::optional<TabContainer> FindHorizontalTabContainerForWindow(
           session.class_conditions.horizontal_tab_strip_region_view)) {
     if (const auto container = FindFirstDescendantByClass(
             tab_strip_region, session.class_conditions.tab_container_impl)) {
+#if defined(_DEBUG)
+      DebugLog(L"UIA: horizontal tab container via tab strip region: {}",
+               ElementDebugSummary(container));
+#endif
       return TabContainer{container, TabContainerKind::kHorizontal};
     }
   }
@@ -541,6 +605,10 @@ std::optional<TabContainer> FindVerticalTabContainerForWindow(
   if (const auto container = FindFirstDescendantByClass(
           window_element,
           session.class_conditions.vertical_unpinned_tab_container_view)) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: vertical tab container: {}",
+             ElementDebugSummary(container));
+#endif
     return TabContainer{container, TabContainerKind::kVertical};
   }
 
@@ -560,11 +628,19 @@ std::optional<TabContainer> FindFullscreenTabContainerFallback(
   // tabbed browser windows.
   if (const auto container = FindFirstDescendantByClassRaw(
           session, window_element, L"TabContainerImpl")) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: fullscreen horizontal tab container fallback: {}",
+             ElementDebugSummary(container));
+#endif
     return TabContainer{container, TabContainerKind::kHorizontal};
   }
 
   if (const auto container = FindFirstDescendantByClassRaw(
           session, window_element, L"VerticalUnpinnedTabContainerView")) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: fullscreen vertical tab container fallback: {}",
+             ElementDebugSummary(container));
+#endif
     return TabContainer{container, TabContainerKind::kVertical};
   }
 
@@ -613,31 +689,57 @@ ComPtr<IUIAutomationElement> FindTabElementAtPoint(
     const ComPtr<IUIAutomationElementArray>& tab_elements,
     POINT pt) {
   if (!tab_elements) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: tab element scan skipped, no tab array");
+#endif
     return nullptr;
   }
 
   int count = 0;
   if (FAILED(tab_elements->get_Length(&count))) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: tab element scan failed, get_Length failed");
+#endif
     return nullptr;
   }
+
+#if defined(_DEBUG)
+  DebugLog(L"UIA: scanning {} tab elements for pt=({}, {})", count, pt.x,
+           pt.y);
+#endif
 
   for (int i = 0; i < count; ++i) {
     ComPtr<IUIAutomationElement> tab_element;
     if (FAILED(tab_elements->GetElement(
             i, tab_element.ReleaseAndGetAddressOf())) ||
         !tab_element) {
+#if defined(_DEBUG)
+      DebugLog(L"UIA: tab[{}] unavailable", i);
+#endif
       continue;
     }
 
     RECT rect;
     if (FAILED(tab_element->get_CurrentBoundingRectangle(&rect))) {
+#if defined(_DEBUG)
+      DebugLog(L"UIA: tab[{}] has no bounding rectangle: {}", i,
+               ElementDebugSummary(tab_element));
+#endif
       continue;
     }
-    if (PtInRect(&rect, pt)) {
+    const bool contains_point = PtInRect(&rect, pt) != FALSE;
+#if defined(_DEBUG)
+    DebugLog(L"UIA: tab[{}] {} contains_pt={}", i,
+             ElementDebugSummary(tab_element), contains_point);
+#endif
+    if (contains_point) {
       return tab_element;
     }
   }
 
+#if defined(_DEBUG)
+  DebugLog(L"UIA: no tab element contains pt=({}, {})", pt.x, pt.y);
+#endif
   return nullptr;
 }
 
@@ -651,14 +753,27 @@ bool IsOnTabCloseButton(const UiaSession& session,
   const auto close_button = FindFirstDescendantByClass(
       tab_element, session.class_conditions.tab_close_button);
   if (!close_button) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: tab has no close button: {}",
+             ElementDebugSummary(tab_element));
+#endif
     return false;
   }
 
   RECT close_button_rect;
   if (FAILED(close_button->get_CurrentBoundingRectangle(&close_button_rect))) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: close button has no bounding rectangle: {}",
+             ElementDebugSummary(close_button));
+#endif
     return false;
   }
-  return PtInRect(&close_button_rect, pt) != FALSE;
+  const bool contains_point = PtInRect(&close_button_rect, pt) != FALSE;
+#if defined(_DEBUG)
+  DebugLog(L"UIA: close button {} contains_pt={}",
+           ElementDebugSummary(close_button), contains_point);
+#endif
+  return contains_point;
 }
 
 ComPtr<IUIAutomationElement> FindSelectedTabElement(
@@ -702,11 +817,19 @@ std::optional<TabHitResult> BuildTabHitResult(const UiaSession& session,
                                               bool need_close_button) {
   const auto tab_elements = FindTabElements(session, tab_container);
   if (!tab_elements) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: build tab hit failed, no tab elements kind={}",
+             TabContainerKindName(tab_container.kind));
+#endif
     return std::nullopt;
   }
 
   const auto tab_element = FindTabElementAtPoint(tab_elements, pt);
   if (!tab_element) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: build tab hit failed, no tab at point kind={}",
+             TabContainerKindName(tab_container.kind));
+#endif
     return std::nullopt;
   }
 
@@ -714,8 +837,12 @@ std::optional<TabHitResult> BuildTabHitResult(const UiaSession& session,
   if (need_count) {
     const auto raw_count =
         CountDescendantsByClassRaw(session, tab_container.element,
-                                   GetTabElementClassName(tab_container.kind));
+                                    GetTabElementClassName(tab_container.kind));
     if (!raw_count) {
+#if defined(_DEBUG)
+      DebugLog(L"UIA: build tab hit failed, raw tab count unavailable kind={}",
+               TabContainerKindName(tab_container.kind));
+#endif
       return std::nullopt;
     }
     tab_count = *raw_count;
@@ -726,6 +853,14 @@ std::optional<TabHitResult> BuildTabHitResult(const UiaSession& session,
   hit_result.tab_count = need_count ? tab_count : 0;
   hit_result.on_close_button =
       need_close_button && IsOnTabCloseButton(session, tab_element, pt);
+#if defined(_DEBUG)
+  DebugLog(
+      L"UIA: tab hit success kind={} need_count={} tab_count={} "
+      L"need_close_button={} on_close_button={} tab={}",
+      TabContainerKindName(tab_container.kind), need_count, hit_result.tab_count,
+      need_close_button, hit_result.on_close_button,
+      ElementDebugSummary(tab_element));
+#endif
   return hit_result;
 }
 
@@ -824,17 +959,32 @@ std::optional<TabHitResult> FindTabHitResult(POINT pt,
                                              bool need_close_button) {
   const UiaSession* session = GetUiaSession();
   if (!session) {
+    DebugLog(L"UIA: FindTabHitResult failed, no UIA session");
     return std::nullopt;
   }
 
   const HWND hwnd = WindowFromPoint(pt);
   const HWND root = hwnd ? GetAncestor(hwnd, GA_ROOT) : nullptr;
+#if defined(_DEBUG)
+  DebugLog(
+      L"UIA: FindTabHitResult pt=({}, {}) hwnd=0x{:X} hwnd_class='{}' "
+      L"root=0x{:X} root_class='{}' need_count={} need_close_button={}",
+      pt.x, pt.y, reinterpret_cast<uintptr_t>(hwnd),
+      GetWindowClassNameForLog(hwnd), reinterpret_cast<uintptr_t>(root),
+      GetWindowClassNameForLog(root), need_count, need_close_button);
+#endif
   if (!root || !IsChromeWindow(root)) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: FindTabHitResult failed, root is not Chrome window");
+#endif
     return std::nullopt;
   }
 
   const auto tab_container = FindTabContainerForWindow(*session, root);
   if (!tab_container) {
+#if defined(_DEBUG)
+    DebugLog(L"UIA: FindTabHitResult failed, no tab container");
+#endif
     return std::nullopt;
   }
 

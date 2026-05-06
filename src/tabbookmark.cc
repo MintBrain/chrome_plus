@@ -12,6 +12,48 @@ namespace {
 constexpr UINT kDefaultDpi = 96;
 POINT lbutton_down_point = {-1, -1};
 
+std::wstring_view MouseMessageName(WPARAM message) {
+  switch (message) {
+    case WM_LBUTTONDOWN:
+      return L"WM_LBUTTONDOWN";
+    case WM_LBUTTONUP:
+      return L"WM_LBUTTONUP";
+    case WM_LBUTTONDBLCLK:
+      return L"WM_LBUTTONDBLCLK";
+    case WM_RBUTTONDOWN:
+      return L"WM_RBUTTONDOWN";
+    case WM_RBUTTONUP:
+      return L"WM_RBUTTONUP";
+    case WM_RBUTTONDBLCLK:
+      return L"WM_RBUTTONDBLCLK";
+    case WM_MBUTTONDOWN:
+      return L"WM_MBUTTONDOWN";
+    case WM_MBUTTONUP:
+      return L"WM_MBUTTONUP";
+    case WM_MBUTTONDBLCLK:
+      return L"WM_MBUTTONDBLCLK";
+    default:
+      return L"other";
+  }
+}
+
+bool ShouldLogMouseMessage(WPARAM message) {
+  switch (message) {
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MBUTTONDBLCLK:
+      return true;
+    default:
+      return false;
+  }
+}
+
 enum class KeepTabTrigger {
   kRightClick = 0,
   kMiddleClick,
@@ -78,19 +120,28 @@ bool HandleMouseWheel(LPARAM lParam, const MOUSEHOOKSTRUCT* pmouse) {
 // Double-click to close tab.
 bool HandleDoubleClick(const MOUSEHOOKSTRUCT* pmouse) {
   if (!config.IsDoubleClickClose()) {
+    DebugLog(L"TabBookmark: double-click skip, double_click_close disabled");
     return false;
   }
 
   const POINT pt = pmouse->pt;
   HWND hwnd = WindowFromPoint(pt);
+  DebugLog(L"TabBookmark: double-click pt=({}, {}) hwnd=0x{:X} keep_last_tab={}",
+           pt.x, pt.y, reinterpret_cast<uintptr_t>(hwnd),
+           config.IsKeepLastTab());
   const auto hit = FindTabHitResult(pt, config.IsKeepLastTab(), true);
   if (!hit || hit->on_close_button) {
+    DebugLog(L"TabBookmark: double-click no action, hit={} on_close_button={}",
+             hit.has_value(), hit ? hit->on_close_button : false);
     return false;
   }
   if (hit->tab_count == 1) {
+    DebugLog(L"TabBookmark: double-click keep last tab action");
     ExecuteCommand(IDC_NEW_TAB, hwnd);
     ExecuteCommand(IDC_WINDOW_CLOSE_OTHER_TABS, hwnd);
   } else {
+    DebugLog(L"TabBookmark: double-click close tab action, tab_count={}",
+             hit->tab_count);
     ExecuteCommand(IDC_CLOSE_TAB, hwnd);
   }
   return true;
@@ -98,22 +149,35 @@ bool HandleDoubleClick(const MOUSEHOOKSTRUCT* pmouse) {
 
 // Right-click to close tab (Hold Shift to show the original menu).
 bool HandleRightClick(const MOUSEHOOKSTRUCT* pmouse) {
-  if (IsKeyPressed(VK_SHIFT) || !config.IsRightClickClose()) {
+  if (IsKeyPressed(VK_SHIFT)) {
+    DebugLog(L"TabBookmark: right-click skip, shift pressed");
+    return false;
+  }
+  if (!config.IsRightClickClose()) {
+    DebugLog(L"TabBookmark: right-click skip, right_click_close disabled");
     return false;
   }
 
   const POINT pt = pmouse->pt;
   HWND hwnd = WindowFromPoint(pt);
+  DebugLog(L"TabBookmark: right-click pt=({}, {}) hwnd=0x{:X} keep_last_tab={}",
+           pt.x, pt.y, reinterpret_cast<uintptr_t>(hwnd),
+           config.IsKeepLastTab());
   const auto hit = FindTabHitResult(pt, config.IsKeepLastTab(), false);
   if (!hit) {
+    DebugLog(L"TabBookmark: right-click no action, no tab hit");
     return false;
   }
   if (IsNeedKeep(hit->tab_count, KeepTabTrigger::kRightClick)) {
+    DebugLog(L"TabBookmark: right-click keep last tab action, tab_count={}",
+             hit->tab_count);
     ExecuteCommand(IDC_NEW_TAB, hwnd);
     ExecuteCommand(IDC_WINDOW_CLOSE_OTHER_TABS, hwnd);
   } else {
     // Attempt new SendKey function which includes a `dwExtraInfo`
     // value (GetMagicCode()).
+    DebugLog(L"TabBookmark: right-click send middle button action, tab_count={}",
+             hit->tab_count);
     SendKey(VK_MBUTTON);
   }
   return true;
@@ -149,6 +213,8 @@ bool HandleCloseButton(const MOUSEHOOKSTRUCT* pmouse) {
   HWND hwnd = WindowFromPoint(pt);
   const auto hit = FindTabHitResult(pt, config.IsKeepLastTab(), true);
   if (!hit || !hit->on_close_button) {
+    DebugLog(L"TabBookmark: close-button no action, hit={} on_close_button={}",
+             hit.has_value(), hit ? hit->on_close_button : false);
     return false;
   }
   if (!IsNeedKeep(hit->tab_count, KeepTabTrigger::kCloseButton)) {
@@ -223,6 +289,11 @@ bool HandleBookmark(const MOUSEHOOKSTRUCT* pmouse) {
 // Mouse handler for tab and bookmark operations
 bool TabBookmarkMouseHandler(WPARAM wParam, LPARAM lParam) {
   PMOUSEHOOKSTRUCT pmouse = reinterpret_cast<PMOUSEHOOKSTRUCT>(lParam);
+  if (ShouldLogMouseMessage(wParam)) {
+    DebugLog(L"TabBookmark: mouse {} pt=({}, {}) extra=0x{:X}",
+             MouseMessageName(wParam), pmouse->pt.x, pmouse->pt.y,
+             pmouse->dwExtraInfo);
+  }
 
   static bool wheel_tab_ing_with_rbutton = false;
   // Set when a tab-closing handler succeeds. While active, subsequent messages
