@@ -13,6 +13,7 @@
 
 #include "detours.h"
 
+#include "config.h"
 #include "utils.h"
 
 namespace {
