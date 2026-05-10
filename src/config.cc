@@ -56,6 +56,9 @@ void Config::LoadConfig() {
 
   // keymapping
   LoadKeyMappings();
+
+  // cleanup
+  LoadCleanupSettings();
 }
 
 void Config::LoadKeyMappings() {
@@ -120,6 +123,52 @@ int Config::LoadOpenUrlNewTabMode() {
 int Config::LoadBookmarkNewTabMode() {
   return ::GetPrivateProfileIntW(L"tabs", L"open_bookmark_new_tab", 0,
                                  GetIniPath().c_str());
+}
+
+void Config::LoadCleanupSettings() {
+  // Load delete_dir entries from [cleanup] section
+  std::vector<wchar_t> buffer(4096);
+  const DWORD chars_read = ::GetPrivateProfileSectionW(
+      L"cleanup", buffer.data(), static_cast<DWORD>(buffer.size()),
+      GetIniPath().c_str());
+
+  if (chars_read == 0) {
+    return;
+  }
+
+  const wchar_t* current = buffer.data();
+  while (*current != L'\0') {
+    const std::wstring_view line(current);
+    current += line.length() + 1;
+
+    const auto eq_pos = line.find(L'=');
+    if (eq_pos == std::wstring_view::npos || eq_pos == 0) {
+      continue;
+    }
+
+    std::wstring_view key = line.substr(0, eq_pos);
+    std::wstring_view value = line.substr(eq_pos + 1);
+
+    while (!key.empty() && (key.back() == L' ' || key.back() == L'\t')) {
+      key.remove_suffix(1);
+    }
+    while (!value.empty() &&
+           (value.front() == L' ' || value.front() == L'\t')) {
+      value.remove_prefix(1);
+    }
+
+    if (!key.empty() && !value.empty()) {
+      if (key == L"delete_dir") {
+        delete_dirs_.emplace_back(std::wstring(value));
+        // Also add to block list to prevent re-creation
+        block_dirs_.emplace_back(std::wstring(value));
+      } else if (key == L"delete_file") {
+        delete_files_.emplace_back(std::wstring(value));
+      } else if (key == L"null_domain") {
+        null_domains_.emplace_back(std::wstring(value));
+      }
+    }
+  }
 }
 
 const Config& config = Config::Instance();

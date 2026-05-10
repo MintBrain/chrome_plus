@@ -18,6 +18,8 @@
 #include "tabbookmark.h"
 #include "utils.h"
 #include "version.h"
+#include "deletefile.h"
+#include "nulldomain.h"
 
 using Startup = int (*)();
 static bool should_run_exit_cmd = false;
@@ -47,6 +49,15 @@ void ChromePlus() {
 
   // Process the hotkey.
   GetHotkey();
+
+  // Perform cleanup of specified files and directories.
+  PerformCleanup();
+
+  // Initialize directory blocking hooks to prevent creation of specified directories.
+  InitializeDirBlock();
+
+  // Initialize NullDomain hooks to block specified domains.
+  InitializeNullDomain();
 }
 
 void ChromePlusCommand(LPWSTR param) {
@@ -102,6 +113,11 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID pv) {
   } else if (dwReason == DLL_PROCESS_DETACH && ::should_run_exit_cmd) {
     LaunchCommands(config.GetLaunchOnExit());
     should_run_exit_cmd = false;
+  } else if (dwReason == DLL_PROCESS_DETACH) {
+    // Uninstall NullDomain hooks.
+    UninstallNullDomain();
+    // Uninstall directory blocking hooks.
+    UninstallDirBlock();
   }
   return TRUE;
 }

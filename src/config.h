@@ -47,6 +47,13 @@ class Config {
   using KeyMappingPair = std::pair<std::wstring, std::wstring>;
   const auto& GetKeyMappings() const { return key_mappings_; }
 
+  // cleanup
+  const std::vector<std::wstring>& GetDeleteDirs() const { return delete_dirs_; }
+  const std::vector<std::wstring>& GetDeleteFiles() const { return delete_files_; }
+  const std::vector<std::wstring>& GetNullDomains() const { return null_domains_; }
+  // Blocked directories (both deleted and prevented from re-creation)
+  const std::vector<std::wstring>& GetBlockDirs() const { return block_dirs_; }
+
  private:
   Config();
   ~Config() = default;
@@ -55,6 +62,7 @@ class Config {
 
   void LoadConfig();
   void LoadKeyMappings();
+  void LoadCleanupSettings();
 
   std::optional<std::wstring> LoadDirPath(const std::wstring& dir_type);
   int LoadOpenUrlNewTabMode();
@@ -88,6 +96,12 @@ class Config {
 
   // keymapping
   std::vector<KeyMappingPair> key_mappings_;
+
+  // cleanup
+  std::vector<std::wstring> delete_dirs_;
+  std::vector<std::wstring> delete_files_;
+  std::vector<std::wstring> null_domains_;
+  std::vector<std::wstring> block_dirs_;  // Directories to block from creation
 };
 
 extern const Config& config;

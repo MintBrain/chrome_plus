@@ -60,7 +60,7 @@ target("chrome_plus")
     add_deps("mini_gzip")
     add_files("src/*.cc")
     add_files("src/*.rc")
-    add_links("onecore", "propsys", "oleacc")
+    add_links("onecore", "propsys", "oleacc", "ws2_32")
     if is_mode("release") then
         add_packages("vc-ltl5")
     end
