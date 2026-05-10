@@ -30,6 +30,14 @@ uint64_t Fnv1aHash(std::wstring_view input) {
 constexpr std::wstring_view APPID_PREFIX = L"ChromePlusNext.";
 const std::wstring& GetCustomAppUserModelID() {
   static const std::wstring custom_appid = [] {
+    // If user specified a custom AppUserModelID in config, use it directly
+    const auto& config_appid = config.GetAppId();
+    if (!config_appid.empty()) {
+      DebugLog(L"AppUserModelID (custom): {}", config_appid);
+      return std::wstring{config_appid};
+    }
+    
+    // Otherwise, generate from app directory hash (existing behavior)
     constexpr wchar_t hex[] = L"0123456789ABCDEF";
     auto hash = Fnv1aHash(GetAppDir());
     std::wstring result{APPID_PREFIX};

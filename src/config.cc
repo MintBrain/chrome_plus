@@ -33,6 +33,7 @@ void Config::LoadConfig() {
                                     GetIniPath().c_str()) != 0;
   ignore_policies_ = ::GetPrivateProfileIntW(L"general", L"ignore_policies", 0,
                                              GetIniPath().c_str()) != 0;
+  appid_ = GetIniString(L"general", L"appid", L"");
 
   // tabs
   keep_last_tab_ = ::GetPrivateProfileIntW(L"tabs", L"keep_last_tab", 1,
