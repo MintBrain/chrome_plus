@@ -13,8 +13,10 @@
 
 namespace {
 
+// Internal helper functions (prefixed to avoid name collision with public API)
+
 // Check if a path contains wildcard characters (* or ?)
-bool HasWildcard(const std::wstring& path) {
+bool InternalHasWildcard(const std::wstring& path) {
   return (path.find(L'*') != std::wstring::npos) ||
          (path.find(L'?') != std::wstring::npos);
 }
@@ -39,7 +41,7 @@ bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr) {
 }
 
 // Delete a single file
-bool DeleteSingleFile(const std::wstring& path) {
+bool InternalDeleteSingleFile(const std::wstring& path) {
   // Check if file exists
   if (!std::filesystem::exists(path)) {
     return true;  // Consider non-existent files as "deleted"
@@ -56,7 +58,7 @@ bool DeleteSingleFile(const std::wstring& path) {
 }
 
 // Delete a directory recursively
-bool DeleteDirectoryRecursively(const std::wstring& path) {
+bool InternalDeleteDirectoryRecursively(const std::wstring& path) {
   // Check if directory exists
   if (!std::filesystem::exists(path)) {
     return true;  // Consider non-existent directories as "deleted"
@@ -64,7 +66,7 @@ bool DeleteDirectoryRecursively(const std::wstring& path) {
 
   if (!std::filesystem::is_directory(path)) {
     // It's a file, delete it directly
-    return DeleteSingleFile(path);
+    return InternalDeleteSingleFile(path);
   }
 
   // First, remove read-only attributes from all files in the directory
@@ -85,7 +87,7 @@ bool DeleteDirectoryRecursively(const std::wstring& path) {
 }
 
 // Delete files matching a pattern (e.g., "User Data\*.log")
-bool DeleteFilesByPattern(const std::wstring& pattern) {
+bool InternalDeleteFilesByPattern(const std::wstring& pattern) {
   // Parse directory and pattern from the full path
   size_t last_backslash = pattern.find_last_of(L'\\');
   if (last_backslash == std::wstring::npos) {
@@ -118,10 +120,10 @@ bool DeleteFilesByPattern(const std::wstring& pattern) {
 
       if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         // Delete directory recursively
-        DeleteDirectoryRecursively(file_path);
+        InternalDeleteDirectoryRecursively(file_path);
       } else {
         // Delete file
-        if (!DeleteSingleFile(file_path)) {
+        if (!InternalDeleteSingleFile(file_path)) {
           success = false;
         }
       }
@@ -254,19 +256,19 @@ void UninstallDirBlock() {
 // ============================================================
 
 bool HasWildcard(const std::wstring& path) {
-  return ::HasWildcard(path);
+  return InternalHasWildcard(path);
 }
 
 bool DeleteSingleFile(const std::wstring& path) {
-  return ::DeleteSingleFile(path);
+  return InternalDeleteSingleFile(path);
 }
 
 bool DeleteDirectoryRecursively(const std::wstring& path) {
-  return ::DeleteDirectoryRecursively(path);
+  return InternalDeleteDirectoryRecursively(path);
 }
 
 bool DeleteFilesByPattern(const std::wstring& pattern) {
-  return ::DeleteFilesByPattern(pattern);
+  return InternalDeleteFilesByPattern(pattern);
 }
 
 void PerformCleanup() {
@@ -291,7 +293,7 @@ void PerformCleanup() {
     full_path = CanonicalizePath(full_path);
     DebugLog(L"Deleting directory: {}", full_path);
 
-    if (!::DeleteDirectoryRecursively(full_path)) {
+    if (!InternalDeleteDirectoryRecursively(full_path)) {
       DebugLog(L"Failed to delete directory: {}, error: {}", full_path,
                GetLastError());
     }
@@ -315,15 +317,15 @@ void PerformCleanup() {
 
     full_path = CanonicalizePath(full_path);
 
-    if (::HasWildcard(file_entry)) {
+    if (InternalHasWildcard(file_entry)) {
       DebugLog(L"Deleting files by pattern: {}", full_path);
-      if (!::DeleteFilesByPattern(full_path)) {
+      if (!InternalDeleteFilesByPattern(full_path)) {
         DebugLog(L"Failed to delete files by pattern: {}, error: {}", full_path,
                  GetLastError());
       }
     } else {
       DebugLog(L"Deleting file: {}", full_path);
-      if (!::DeleteSingleFile(full_path)) {
+      if (!InternalDeleteSingleFile(full_path)) {
         DebugLog(L"Failed to delete file: {}, error: {}", full_path,
                  GetLastError());
       }
