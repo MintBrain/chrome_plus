@@ -69,9 +69,9 @@ int WSAAPI GetaddrinfoHooked(
     const ADDRINFOA* hints, PADDRINFOA* result) {
   
   if (nodename != nullptr) {
-    DebugLog("getaddrinfo called for: {}", nodename);
+    DebugLog(L"getaddrinfo called for: {}", nodename);
     if (IsDomainBlocked(std::string(nodename))) {
-      DebugLog("Blocking DNS resolution for: {}", nodename);
+      DebugLog(L"Blocking DNS resolution for: {}", nodename);
       return EAI_FAIL;
     }
   }
@@ -149,8 +149,8 @@ void InitializeNullDomain() {
       
       DetourTransactionBegin();
       DetourUpdateThread(GetCurrentThread());
-      DetourAttach(&reinterpret_cast<LPVOID&>(g_pfnGetaddrinfo),
-                   GetaddrinfoHooked);
+      DetourAttach(&(LPVOID&)g_pfnGetaddrinfo,
+                   reinterpret_cast<void*>(GetaddrinfoHooked));
       DetourTransactionCommit();
     }
     
@@ -159,8 +159,8 @@ void InitializeNullDomain() {
       
       DetourTransactionBegin();
       DetourUpdateThread(GetCurrentThread());
-      DetourAttach(&reinterpret_cast<LPVOID&>(g_pfnGetaddrinfoW),
-                   GetaddrinfoWHooked);
+      DetourAttach(&(LPVOID&)g_pfnGetaddrinfoW,
+                   reinterpret_cast<void*>(GetaddrinfoWHooked));
       DetourTransactionCommit();
     }
     
@@ -178,16 +178,16 @@ void UninstallNullDomain() {
   if (g_pfnGetaddrinfo != nullptr) {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
-    DetourDetach(&reinterpret_cast<LPVOID&>(g_pfnGetaddrinfo),
-                 GetaddrinfoHooked);
+    DetourDetach(&(LPVOID&)g_pfnGetaddrinfo,
+                 reinterpret_cast<void*>(GetaddrinfoHooked));
     DetourTransactionCommit();
   }
   
   if (g_pfnGetaddrinfoW != nullptr) {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
-    DetourDetach(&reinterpret_cast<LPVOID&>(g_pfnGetaddrinfoW),
-                 GetaddrinfoWHooked);
+    DetourDetach(&(LPVOID&)g_pfnGetaddrinfoW,
+                 reinterpret_cast<void*>(GetaddrinfoWHooked));
     DetourTransactionCommit();
   }
   
