@@ -85,6 +85,10 @@ std::wstring GetAbsolutePath(const std::wstring& path);
 // Expand environment variables in the path
 std::wstring ExpandEnvironmentPath(const std::wstring& path);
 
+// Case-insensitive substring search
+bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr);
+bool ContainsIgnoreCase(const std::string& str, const std::string& substr);
+
 // Debug log function
 #if defined(_DEBUG)
 #include <filesystem>

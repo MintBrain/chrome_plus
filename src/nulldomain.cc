@@ -36,41 +36,6 @@ static GetaddrinfoOriginal g_pfnGetaddrinfo = nullptr;
 
 namespace {
 
-// Case-insensitive substring search
-bool ContainsIgnoreCase(const std::string& str, const std::string& substr) {
-  if (substr.empty()) return false;
-  
-  auto it = str.begin();
-  for (; it <= std::distance(str.begin(), str.end() - substr.size()); ++it) {
-    bool match = true;
-    for (size_t j = 0; j < substr.size(); ++j) {
-      if (std::tolower(*it) != std::tolower(*(it + j))) {
-        match = false;
-        break;
-      }
-    }
-    if (match) return true;
-  }
-  return false;
-}
-
-bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr) {
-  if (substr.empty()) return false;
-  
-  auto it = str.begin();
-  for (; it <= std::distance(str.begin(), str.end() - substr.size()); ++it) {
-    bool match = true;
-    for (size_t j = 0; j < substr.size(); ++j) {
-      if (std::towlower(*it) != std::towlower(*(it + j))) {
-        match = false;
-        break;
-      }
-    }
-    if (match) return true;
-  }
-  return false;
-}
-
 // Check if a domain should be blocked
 bool IsDomainBlocked(const std::string& hostname) {
   const auto& null_domains = config.GetNullDomains();

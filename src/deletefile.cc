@@ -21,25 +21,6 @@ bool InternalHasWildcard(const std::wstring& path) {
          (path.find(L'?') != std::wstring::npos);
 }
 
-// Case-insensitive substring search
-bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr) {
-  if (substr.empty()) return false;
-  if (substr.size() > str.size()) return false;
-
-  for (size_t i = 0; i <= str.size() - substr.size(); ++i) {
-    bool match = true;
-    for (size_t j = 0; j < substr.size(); ++j) {
-      if (towlower(static_cast<wint_t>(str[i + j])) !=
-          towlower(static_cast<wint_t>(substr[j]))) {
-        match = false;
-        break;
-      }
-    }
-    if (match) return true;
-  }
-  return false;
-}
-
 // Delete a single file
 bool InternalDeleteSingleFile(const std::wstring& path) {
   // Check if file exists
