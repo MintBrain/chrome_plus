@@ -13,10 +13,6 @@
 #include "detours.h"
 #include "utils.h"
 
-// Error codes for DNS resolution
-#define EAI_FAIL 11001
-#define EAI_NONAME 11001
-
 // Original function pointer for getaddrinfoW
 typedef int (WSAAPI *GetaddrinfoWOriginal)(
     PCSTR nodename, PCSTR servname,
