@@ -28,7 +28,7 @@ bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr) {
   for (; it <= end_pos; ++it) {
     bool match = true;
     for (size_t j = 0; j < substr.size(); ++j) {
-      if (std::towlower(*it) != std::towlower(*(it + j))) {
+      if (towlower(static_cast<wint_t>(*it)) != towlower(static_cast<wint_t>(*(it + j)))) {
         match = false;
         break;
       }
@@ -291,7 +291,7 @@ void PerformCleanup() {
     full_path = CanonicalizePath(full_path);
     DebugLog(L"Deleting directory: {}", full_path);
 
-    if (!DeleteDirectoryRecursively(full_path)) {
+    if (!::DeleteDirectoryRecursively(full_path)) {
       DebugLog(L"Failed to delete directory: {}, error: {}", full_path,
                GetLastError());
     }
@@ -315,15 +315,15 @@ void PerformCleanup() {
 
     full_path = CanonicalizePath(full_path);
 
-    if (HasWildcard(file_entry)) {
+    if (::HasWildcard(file_entry)) {
       DebugLog(L"Deleting files by pattern: {}", full_path);
-      if (!DeleteFilesByPattern(full_path)) {
+      if (!::DeleteFilesByPattern(full_path)) {
         DebugLog(L"Failed to delete files by pattern: {}, error: {}", full_path,
                  GetLastError());
       }
     } else {
       DebugLog(L"Deleting file: {}", full_path);
-      if (!DeleteSingleFile(full_path)) {
+      if (!::DeleteSingleFile(full_path)) {
         DebugLog(L"Failed to delete file: {}, error: {}", full_path,
                  GetLastError());
       }
