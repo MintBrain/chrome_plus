@@ -1,7 +1,7 @@
 #include "deletefile.h"
 
 #include <windows.h>
-#include <corecrt_wctype.h>
+#include <cwctype>          // for towlower
 
 #include <filesystem>
 #include <string>
@@ -24,13 +24,13 @@ bool InternalHasWildcard(const std::wstring& path) {
 // Case-insensitive substring search
 bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr) {
   if (substr.empty()) return false;
-  
-  auto it = str.begin();
-  auto end_pos = str.end() - substr.size();
-  for (; it <= end_pos; ++it) {
+  if (substr.size() > str.size()) return false;
+
+  for (size_t i = 0; i <= str.size() - substr.size(); ++i) {
     bool match = true;
     for (size_t j = 0; j < substr.size(); ++j) {
-      if (towlower(static_cast<wint_t>(*it)) != towlower(static_cast<wint_t>(*(it + j)))) {
+      if (towlower(static_cast<wint_t>(str[i + j])) !=
+          towlower(static_cast<wint_t>(substr[j]))) {
         match = false;
         break;
       }
@@ -44,13 +44,12 @@ bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr) {
 bool InternalDeleteSingleFile(const std::wstring& path) {
   // Check if file exists
   if (!std::filesystem::exists(path)) {
-    return true;  // Consider non-existent files as "deleted"
+    return true;  // Non-existent is as good as deleted
   }
 
   // Remove read-only attribute if set
   DWORD attrs = ::GetFileAttributesW(path.c_str());
-  if (attrs != INVALID_FILE_ATTRIBUTES &&
-      (attrs & FILE_ATTRIBUTE_READONLY)) {
+  if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
     ::SetFileAttributesW(path.c_str(), attrs & ~FILE_ATTRIBUTE_READONLY);
   }
 
@@ -72,18 +71,17 @@ bool InternalDeleteDirectoryRecursively(const std::wstring& path) {
   // First, remove read-only attributes from all files in the directory
   std::error_code ec;
   for (const auto& entry : std::filesystem::recursive_directory_iterator(
-           path, std::filesystem::directory_options::skip_permission_denied)) {
+           path, std::filesystem::directory_options::skip_permission_denied, ec)) {
+    if (ec) break;
     const auto& file_path = entry.path();
     DWORD attrs = ::GetFileAttributesW(file_path.c_str());
-    if (attrs != INVALID_FILE_ATTRIBUTES &&
-        (attrs & FILE_ATTRIBUTE_READONLY)) {
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
       ::SetFileAttributesW(file_path.c_str(), attrs & ~FILE_ATTRIBUTE_READONLY);
     }
   }
 
-  // Remove the directory
-  return ::RemoveDirectoryW(path.c_str()) != FALSE ||
-         std::filesystem::remove_all(path, ec) > 0;
+  // Now remove the whole tree (works even if the directory is empty)
+  return std::filesystem::remove_all(path, ec) > 0;
 }
 
 // Delete files matching a pattern (e.g., "User Data\*.log")
@@ -91,17 +89,22 @@ bool InternalDeleteFilesByPattern(const std::wstring& pattern) {
   // Parse directory and pattern from the full path
   size_t last_backslash = pattern.find_last_of(L'\\');
   if (last_backslash == std::wstring::npos) {
-    return false;  // No directory specified
+    return false;  // No directory part
   }
 
   std::wstring dir = pattern.substr(0, last_backslash);
   std::wstring file_pattern = pattern.substr(last_backslash + 1);
 
-  // Resolve to absolute path
-  std::wstring abs_dir = dir.starts_with(L"\\")
-                             ? GetAppDir() + dir
-                             : GetAppDir() + L"\\" + dir;
-  abs_dir = CanonicalizePath(abs_dir);
+  // Determine the absolute directory
+  std::wstring abs_dir;
+  // Absolute if it contains a drive letter/UNC (simple check)
+  bool is_absolute = (dir.find(L':') != std::wstring::npos);
+  if (is_absolute) {
+    abs_dir = CanonicalizePath(dir);   // already absolute
+  } else {
+    // Relative: root from application directory
+    abs_dir = CanonicalizePath(GetAppDir() + L"\\" + dir);
+  }
 
   std::wstring search_path = abs_dir + L"\\" + file_pattern;
 
@@ -110,7 +113,7 @@ bool InternalDeleteFilesByPattern(const std::wstring& pattern) {
   HANDLE find_handle = ::FindFirstFileW(search_path.c_str(), &find_data);
 
   if (find_handle == INVALID_HANDLE_VALUE) {
-    return true;  // No files found, not an error
+    return true;  // No matching files – not an error
   }
 
   do {
@@ -137,31 +140,28 @@ bool InternalDeleteFilesByPattern(const std::wstring& pattern) {
 // Check if a directory path should be blocked
 bool IsDirBlocked(const std::wstring& path) {
   const auto& block_dirs = config.GetBlockDirs();
-  
+
   for (const auto& blocked_dir : block_dirs) {
     // Normalize both paths for comparison
     std::wstring normalized_path = path;
     std::wstring normalized_blocked = blocked_dir;
-    
-    // Remove trailing backslashes for consistent comparison
-    while (normalized_path.size() > 1 && normalized_path.back() == L'\\') {
+
+    // Remove trailing backslashes
+    while (normalized_path.size() > 1 && normalized_path.back() == L'\\')
       normalized_path.pop_back();
-    }
-    while (normalized_blocked.size() > 1 && normalized_blocked.back() == L'\\') {
+    while (normalized_blocked.size() > 1 && normalized_blocked.back() == L'\\')
       normalized_blocked.pop_back();
-    }
-    
-    // Check if the path contains the blocked directory (substring match like another-lib)
+
     if (ContainsIgnoreCase(normalized_path, normalized_blocked)) {
       return true;
     }
   }
-  
-  // Also check for BrowserMetrics specifically (hardcoded like in another-lib)
+
+  // Hardcoded block for BrowserMetrics (should ideally be in config)
   if (ContainsIgnoreCase(path, L"BrowserMetrics")) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -171,7 +171,6 @@ bool IsDirBlocked(const std::wstring& path) {
 // CreateDirectory Hook Implementation
 // ============================================================
 
-// Original function pointer
 typedef BOOL (WINAPI *CreateDirectoryWOriginal)(
     LPCWSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
 
@@ -184,48 +183,41 @@ BOOL WINAPI CreateDirectoryWHooked(
   
   std::wstring path(lpPathName);
   
-  // Check if this directory should be blocked
   if (IsDirBlocked(path)) {
     DebugLog(L"Blocking directory creation: {}", path);
-    // Return TRUE to indicate success without actually creating the directory
-    // This prevents Chrome from knowing the directory was blocked
-    return TRUE;
+    return TRUE;   // Pretend success
   }
   
-  // Call original function
   if (g_pfnCreateDirectoryW != nullptr) {
     return g_pfnCreateDirectoryW(lpPathName, lpSecurityAttributes);
   }
   
-  // Fallback: try to create anyway
   return ::CreateDirectoryW(lpPathName, lpSecurityAttributes);
 }
 
 void InitializeDirBlock() {
-  if (g_dir_block_hooks_installed) {
-    return;
-  }
-  
+  if (g_dir_block_hooks_installed) return;
+
   const auto& block_dirs = config.GetBlockDirs();
   if (block_dirs.empty()) {
     DebugLog(L"No directories to block");
     return;
   }
-  
+
   DebugLog(L"Initializing directory blocking with {} directories", block_dirs.size());
   for (const auto& dir : block_dirs) {
     DebugLog(L"  - Blocking: {}", dir);
   }
-  
+
   // Hook CreateDirectoryW using Detours
   g_pfnCreateDirectoryW = ::CreateDirectoryW;
-  
+
   DetourTransactionBegin();
   DetourUpdateThread(GetCurrentThread());
   DetourAttach(&reinterpret_cast<LPVOID&>(g_pfnCreateDirectoryW),
                reinterpret_cast<LPVOID>(CreateDirectoryWHooked));
   auto status = DetourTransactionCommit();
-  
+
   if (status == NO_ERROR) {
     g_dir_block_hooks_installed = true;
     DebugLog(L"Directory blocking hooks installed successfully");
@@ -235,10 +227,8 @@ void InitializeDirBlock() {
 }
 
 void UninstallDirBlock() {
-  if (!g_dir_block_hooks_installed) {
-    return;
-  }
-  
+  if (!g_dir_block_hooks_installed) return;
+
   if (g_pfnCreateDirectoryW != nullptr) {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
@@ -246,13 +236,12 @@ void UninstallDirBlock() {
                  reinterpret_cast<LPVOID>(CreateDirectoryWHooked));
     DetourTransactionCommit();
   }
-  
   g_dir_block_hooks_installed = false;
   DebugLog(L"Directory blocking hooks uninstalled");
 }
 
 // ============================================================
-// Public API implementations
+// Public API implementations (delegate to internal helpers)
 // ============================================================
 
 bool HasWildcard(const std::wstring& path) {
@@ -278,15 +267,14 @@ void PerformCleanup() {
   for (const auto& dir_entry : config.GetDeleteDirs()) {
     std::wstring full_path;
 
-    if (dir_entry.starts_with(L"\\") || dir_entry.find(L":") != std::wstring::npos) {
-      // Absolute path or path starting with backslash
-      if (dir_entry.starts_with(L"\\")) {
-        full_path = app_dir + dir_entry;
-      } else {
-        full_path = dir_entry;
-      }
+    if (dir_entry.find(L":") != std::wstring::npos) {
+      // Absolute path (contains drive letter)
+      full_path = dir_entry;
+    } else if (dir_entry.starts_with(L"\\")) {
+      // Root‑relative – prepend app directory
+      full_path = app_dir + L"\\" + dir_entry.substr(1);
     } else {
-      // Relative path
+      // Plain relative path
       full_path = app_dir + L"\\" + dir_entry;
     }
 
@@ -303,23 +291,19 @@ void PerformCleanup() {
   for (const auto& file_entry : config.GetDeleteFiles()) {
     std::wstring full_path;
 
-    if (file_entry.starts_with(L"\\") || file_entry.find(L":") != std::wstring::npos) {
-      // Absolute path or path starting with backslash
-      if (file_entry.starts_with(L"\\")) {
-        full_path = app_dir + file_entry;
-      } else {
-        full_path = file_entry;
-      }
+    if (file_entry.find(L":") != std::wstring::npos) {
+      full_path = file_entry;
+    } else if (file_entry.starts_with(L"\\")) {
+      full_path = app_dir + L"\\" + file_entry.substr(1);
     } else {
-      // Relative path
       full_path = app_dir + L"\\" + file_entry;
     }
 
     full_path = CanonicalizePath(full_path);
 
-    if (InternalHasWildcard(file_entry)) {
+    if (InternalHasWildcard(full_path)) {
       DebugLog(L"Deleting files by pattern: {}", full_path);
-      if (!InternalDeleteFilesByPattern(full_path)) {
+      if (!InternalDeleteFilesByPattern(full_path)) {   // full_path is now absolute
         DebugLog(L"Failed to delete files by pattern: {}, error: {}", full_path,
                  GetLastError());
       }
