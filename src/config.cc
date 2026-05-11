@@ -139,13 +139,14 @@ void Config::LoadCleanupSettings() {
 
   // Helper lambda to expand placeholders
   auto expand_placeholders = [this, &data_dir_placeholder, &data_dir_value](std::wstring_view value) -> std::wstring {
-    std::wstring result(std::wstring(value));
+    std::wstring result = std::wstring(value);
     
     // Expand %data_dir% placeholder
     ReplaceStringInPlace(result, data_dir_placeholder, data_dir_value);
     
     // Also expand %app% placeholder
-    ReplaceStringInPlace(result, L"%app%", GetAppDir());
+    std::wstring app_dir = GetAppDir();
+    ReplaceStringInPlace(result, L"%app%", app_dir);
     
     // Expand environment variables
     result = ExpandEnvironmentPath(result);
