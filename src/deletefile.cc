@@ -23,7 +23,8 @@ bool ContainsIgnoreCase(const std::wstring& str, const std::wstring& substr) {
   if (substr.empty()) return false;
   
   auto it = str.begin();
-  for (; it <= std::distance(str.begin(), str.end() - substr.size()); ++it) {
+  auto end_pos = str.end() - substr.size();
+  for (; it <= end_pos; ++it) {
     bool match = true;
     for (size_t j = 0; j < substr.size(); ++j) {
       if (std::towlower(*it) != std::towlower(*(it + j))) {

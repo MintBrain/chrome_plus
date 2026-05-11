@@ -138,7 +138,7 @@ void Config::LoadCleanupSettings() {
   }
 
   // Helper lambda to expand placeholders
-  auto expand_placeholders = [this, &data_dir_placeholder, &data_dir_value](std::wstring_view value) -> std::wstring {
+  auto expand_placeholders = [&data_dir_placeholder, &data_dir_value](std::wstring_view value) -> std::wstring {
     std::wstring result = std::wstring(value);
     
     // Expand %data_dir% placeholder
