@@ -126,6 +126,33 @@ int Config::LoadBookmarkNewTabMode() {
 }
 
 void Config::LoadCleanupSettings() {
+  // Get the data directory path for placeholder expansion
+  std::wstring data_dir_placeholder = L"%data_dir%";
+  std::wstring data_dir_value;
+  
+  if (user_data_dir_.has_value()) {
+    data_dir_value = *user_data_dir_;
+  } else {
+    // Fallback to default path
+    data_dir_value = CanonicalizePath(GetAppDir() + L"\\..\\Data");
+  }
+
+  // Helper lambda to expand placeholders
+  auto expand_placeholders = [this, &data_dir_placeholder, &data_dir_value](std::wstring_view value) -> std::wstring {
+    std::wstring result(std::wstring(value));
+    
+    // Expand %data_dir% placeholder
+    ReplaceStringInPlace(result, data_dir_placeholder, data_dir_value);
+    
+    // Also expand %app% placeholder
+    ReplaceStringInPlace(result, L"%app%", GetAppDir());
+    
+    // Expand environment variables
+    result = ExpandEnvironmentPath(result);
+    
+    return result;
+  };
+
   // Load delete_dir entries from [cleanup] section
   std::vector<wchar_t> buffer(4096);
   const DWORD chars_read = ::GetPrivateProfileSectionW(
@@ -158,14 +185,16 @@ void Config::LoadCleanupSettings() {
     }
 
     if (!key.empty() && !value.empty()) {
+      std::wstring expanded_value = expand_placeholders(value);
+      
       if (key == L"delete_dir") {
-        delete_dirs_.emplace_back(std::wstring(value));
+        delete_dirs_.emplace_back(expanded_value);
         // Also add to block list to prevent re-creation
-        block_dirs_.emplace_back(std::wstring(value));
+        block_dirs_.emplace_back(expanded_value);
       } else if (key == L"delete_file") {
-        delete_files_.emplace_back(std::wstring(value));
+        delete_files_.emplace_back(expanded_value);
       } else if (key == L"null_domain") {
-        null_domains_.emplace_back(std::wstring(value));
+        null_domains_.emplace_back(expanded_value);
       }
     }
   }
