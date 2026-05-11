@@ -1,6 +1,7 @@
 #include "deletefile.h"
 
 #include <windows.h>
+#include <corecrt_wctype.h>
 
 #include <filesystem>
 #include <string>
@@ -220,7 +221,7 @@ void InitializeDirBlock() {
   DetourTransactionBegin();
   DetourUpdateThread(GetCurrentThread());
   DetourAttach(&reinterpret_cast<LPVOID&>(g_pfnCreateDirectoryW),
-               CreateDirectoryWHooked);
+               reinterpret_cast<LPVOID>(CreateDirectoryWHooked));
   auto status = DetourTransactionCommit();
   
   if (status == NO_ERROR) {
@@ -240,7 +241,7 @@ void UninstallDirBlock() {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourDetach(&reinterpret_cast<LPVOID&>(g_pfnCreateDirectoryW),
-                 CreateDirectoryWHooked);
+                 reinterpret_cast<LPVOID>(CreateDirectoryWHooked));
     DetourTransactionCommit();
   }
   
